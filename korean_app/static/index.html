@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Корейский язык</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --color-dark-green: #1b4332;
+            --color-light-green: #d8f3dc;
+            --color-peach: #ffdab9;
+            --color-pink: #ffc2d1;
+            --app-bg: #fdfaf5;
+            --app-text: #2b2b2b;
+            --app-hint: #7a7a7a;
+            --card-shadow: 0 10px 30px rgba(27, 67, 50, 0.12);
+            --radius-lg: 22px;
+            --radius-md: 14px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: 'Noto Sans KR', 'Playfair Display', sans-serif;
+            background: var(--app-bg);
+            color: var(--app-text);
+            min-height: 100vh;
+        }
+
+        h1 {
+            font-family: 'Playfair Display', serif;
+            color: var(--color-dark-green);
+            font-size: 26px;
+            margin-bottom: 20px;
+            text-align: center;
+            padding-top: 24px;
+        }
+
+        #app { max-width: 480px; margin: 0 auto; padding: 16px; }
+
+        .screen { display: none; animation: popIn 0.3s ease; }
+        .screen.active { display: block; }
+
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.96) translateY(8px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-8px); }
+            40% { transform: translateX(8px); }
+            60% { transform: translateX(-6px); }
+            80% { transform: translateX(6px); }
+        }
+
+        /* Темы */
+        .topic-item {
+            background: #fff;
+            border-radius: var(--radius-md);
+            padding: 18px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--card-shadow);
+            cursor: pointer;
+            transition: transform 0.15s ease;
+            border-left: 6px solid var(--color-light-green);
+        }
+        .topic-item:active { transform: scale(0.98); }
+        .topic-name { font-weight: 700; font-size: 17px; color: var(--color-dark-green); }
+        .topic-count { font-size: 13px; color: var(--app-hint); margin-top: 4px; }
+        .error-badge {
+            background: var(--color-pink);
+            color: var(--color-dark-green);
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 10px;
+            border-radius: 20px;
+        }
+
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--app-hint); }
+        .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state-text { font-size: 16px; }
+
+        /* Кнопки */
+        button {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-family: inherit;
+            font-size: 16px;
+            font-weight: 700;
+            background: var(--color-dark-green);
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.12s ease, opacity 0.12s ease;
+        }
+        button:active { transform: scale(0.97); opacity: 0.9; }
+
+        .mode-buttons { display: flex; flex-direction: column; gap: 12px; }
+        .mode-buttons button {
+            background: #fff;
+            color: var(--color-dark-green);
+            box-shadow: var(--card-shadow);
+            text-align: left;
+            border: 2px solid var(--color-light-green);
+        }
+        .emoji { margin-right: 8px; }
+
+        .btn-back {
+            background: var(--color-peach) !important;
+            color: var(--color-dark-green) !important;
+            margin-top: 16px;
+        }
+
+        /* Карточка слова */
+        .card {
+            background: #fff;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--card-shadow);
+            padding: 28px 20px;
+            text-align: center;
+            margin: 18px 0;
+            border-top: 6px solid var(--color-light-green);
+            animation: popIn 0.3s ease;
+        }
+        .card-korean { font-size: 34px; font-weight: 700; color: var(--color-dark-green); margin-bottom: 14px; }
+        .card-example { font-size: 16px; color: var(--app-text); margin-bottom: 10px; line-height: 1.5; }
+        .card-translation {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--color-dark-green);
+            background: var(--color-light-green);
+            border-radius: var(--radius-md);
+            padding: 12px;
+            margin-top: 10px;
+            animation: popIn 0.25s ease;
+        }
+
+        .hidden { display: none !important; }
+
+        /* Прогресс */
+        .progress-text { text-align: center; font-size: 14px; color: var(--app-hint); margin-top: 18px; }
+        .progress-bar {
+            height: 8px;
+            background: var(--color-light-green);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0 4px;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--color-dark-green);
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+
+        /* Перевод / квиз */
+        .context-sentence, .quiz-question {
+            background: #fff;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--card-shadow);
+            padding: 22px;
+            margin: 18px 0;
+            font-size: 17px;
+            line-height: 1.6;
+            white-space: pre-line;
+            border-top: 6px solid var(--color-peach);
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 15px 16px;
+            border: 2px solid var(--color-light-green);
+            border-radius: var(--radius-md);
+            font-family: inherit;
+            font-size: 16px;
+            background: #fff;
+            margin-bottom: 12px;
+            outline: none;
+        }
+        input[type="text"]:focus { border-color: var(--color-dark-green); }
+
+        .feedback {
+            min-height: 24px;
+            text-align: center;
+            font-weight: 700;
+            margin: 12px 0;
+            border-radius: var(--radius-md);
+            padding: 0;
+        }
+        .feedback.active { padding: 12px; }
+        .feedback.correct { background: var(--color-light-green); color: var(--color-dark-green); }
+        .feedback.incorrect { background: var(--color-pink); color: var(--color-dark-green); animation: shake 0.4s ease; }
+
+        .fc-buttons { display: flex; gap: 12px; }
+        .btn-know { background: var(--color-dark-green); }
+        .btn-forgot { background: var(--color-pink); color: var(--color-dark-green); }
+
+        .error-info { color: var(--color-dark-green); }
+
+        /* Статистика */
+        #session-stats {
+            background: #fff;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--card-shadow);
+            padding: 24px;
+            margin: 18px 0;
+            text-align: center;
+        }
+        #session-stats p { font-size: 18px; margin: 8px 0; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Экран выбора темы -->
+        <div id="screen-topics" class="screen active">
+            <h1>📚 Мои темы</h1>
+            <div id="topics-list"></div>
+        </div>
+
+        <!-- Экран выбора режима -->
+        <div id="screen-modes" class="screen">
+            <h1 id="topic-title">Тема</h1>
+            <div class="mode-buttons">
+                <button onclick="startMode('flashcards')"><span class="emoji">🎴</span> Карточки</button>
+                <button onclick="startMode('translation')"><span class="emoji">🔄</span> Перевод</button>
+                <button onclick="startMode('quiz')"><span class="emoji">🎯</span> Квиз</button>
+                <button onclick="startMode('errors')"><span class="emoji">🛠</span> Работа над ошибками</button>
+                <button class="btn-back" onclick="goToTopics()"><span class="emoji">🔙</span> Назад к темам</button>
+            </div>
+        </div>
+
+        <!-- Экран карточек -->
+        <div id="screen-flashcards" class="screen">
+            <div class="progress-text" id="fc-progress">Слово 1 из 10</div>
+            <div class="progress-bar"><div class="progress-bar-fill" id="fc-progress-bar" style="width: 10%"></div></div>
+            <div class="card">
+                <div class="card-korean" id="fc-korean"></div>
+                <div class="card-example" id="fc-example"></div>
+                <div class="card-translation hidden" id="fc-translation"></div>
+            </div>
+            <button id="fc-show-answer" onclick="showAnswer()"><span class="emoji">👁️</span> Показать перевод</button>
+            <div class="fc-buttons hidden" id="fc-buttons">
+                <button class="btn-know" onclick="answerFlashcard(true)"><span class="emoji">✅</span> Знал</button>
+                <button class="btn-forgot" onclick="answerFlashcard(false)"><span class="emoji">❌</span> Забыл</button>
+            </div>
+            <button class="btn-back" onclick="goToModes()"><span class="emoji">🔙</span> Назад</button>
+        </div>
+
+        <!-- Экран перевода -->
+        <div id="screen-translation" class="screen">
+            <div class="progress-text" id="tr-progress">Слово 1 из 10</div>
+            <div class="progress-bar"><div class="progress-bar-fill" id="tr-progress-bar" style="width: 10%"></div></div>
+            <div class="context-sentence" id="tr-sentence"></div>
+            <input type="text" id="tr-input" placeholder="Введите перевод..." autocomplete="off">
+            <button onclick="checkTranslation()"><span class="emoji">✓</span> Проверить</button>
+            <div id="tr-feedback" class="feedback"></div>
+            <button class="btn-back" onclick="goToModes()"><span class="emoji">🔙</span> Назад</button>
+        </div>
+
+        <!-- Экран квиза -->
+        <div id="screen-quiz" class="screen">
+            <div class="progress-text" id="qz-progress">Слово 1 из 10</div>
+            <div class="progress-bar"><div class="progress-bar-fill" id="qz-progress-bar" style="width: 10%"></div></div>
+            <div class="quiz-question" id="qz-question"></div>
+            <input type="text" id="qz-input" placeholder="Введите ответ..." autocomplete="off">
+            <button onclick="checkQuiz()"><span class="emoji">✓</span> Проверить</button>
+            <div id="qz-feedback" class="feedback"></div>
+            <button class="btn-back" onclick="goToModes()"><span class="emoji">🔙</span> Назад</button>
+        </div>
+
+        <!-- Экран работы над ошибками -->
+        <div id="screen-errors" class="screen">
+            <div class="error-info" id="er-info" style="text-align:center; font-size:18px; margin-bottom: 20px; font-weight: bold; color: var(--color-dark-green);"></div>
+            <div id="er-content"></div>
+            <button class="btn-back" onclick="goToModes()"><span class="emoji">🔙</span> Назад</button>
+        </div>
+
+        <!-- Экран завершения сессии -->
+        <div id="screen-complete" class="screen">
+            <h1>🎉 Сессия завершена!</h1>
+            <div id="session-stats">
+                <p>✅ Правильно: <span id="stats-correct">0</span></p>
+                <p>❌ Ошибок: <span id="stats-incorrect">0</span></p>
+                <p>📊 Всего слов: <span id="stats-total">0</span></p>
+                <p style="margin-top: 16px; font-size: 16px; color: var(--app-hint);">Процент: <span id="stats-percent">0</span>%</p>
+            </div>
+            <button onclick="goToTopics()"><span class="emoji">📚</span> К темам</button>
+        </div>
+    </div>
+
+    <script>
+        // Инициализация
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        // Получение user_id (из Telegram или URL для тестов)
+        const userId = tg.initDataUnsafe?.user?.id || parseInt(new URLSearchParams(window.location.search).get('user_id') || '0');
+        const API_BASE = window.location.origin;
+
+        let currentTopic = null;
+        let currentMode = null;
+        let currentDirection = 'ko_to_ru';
+        let wordIndex = 0;
+        let sessionStats = { correct: 0, incorrect: 0, total: 0 };
+        let currentSessionWords = [];
+        let currentSessionId = null;
+
+        // API Helper
+        async function apiRequest(endpoint, method = 'GET', body = null) {
+            const options = { method, headers: { 'Content-Type': 'application/json' } };
+            if (body) options.body = JSON.stringify(body);
+            const res = await fetch(`${API_BASE}${endpoint}`, options);
+            if (!res.ok) throw new Error((await res.json()).detail || 'API Error');
+            return await res.json();
+        }
+
+        // Навигация
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            setTimeout(() => {
+                document.getElementById(screenId).classList.add('active');
+                window.scrollTo(0, 0);
+            }, 10);
+        }
+
+        function updateProgress(mode, current, total) {
+            const percent = ((current / total) * 100).toFixed(0);
+            const bar = document.getElementById(`${mode}-progress-bar`);
+            const text = document.getElementById(`${mode}-progress`);
+            if (bar) bar.style.width = `${percent}%`;
+            if (text) text.textContent = `Слово ${current} из ${total}`;
+        }
+
+        // Загрузка тем
+        async function loadTopics() {
+            try {
+                const data = await apiRequest(`/api/topics/${userId}`);
+                const list = document.getElementById('topics-list');
+                list.innerHTML = '';
+                if (data.topics.length === 0) {
+                    list.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">Нет доступных тем</div></div>';
+                    return;
+                }
+                data.topics.forEach(topic => {
+                    const item = document.createElement('div');
+                    item.className = 'topic-item';
+                    item.onclick = () => selectTopic(topic);
+                    const badge = topic.error_count > 0 ? `<div class="error-badge">${topic.error_count} ош.</div>` : '';
+                    item.innerHTML = `<div class="topic-info"><div class="topic-name">${topic.name}</div><div class="topic-count">${topic.word_count} слов</div></div>${badge}`;
+                    list.appendChild(item);
+                });
+                showScreen('screen-topics');
+            } catch (e) {
+                alert('Ошибка загрузки: ' + e.message);
+            }
+        }
+
+        function selectTopic(topic) {
+            currentTopic = topic;
+            document.getElementById('topic-title').innerText = topic.name;
+            showScreen('screen-modes');
+        }
+
+        function goToTopics() { loadTopics(); }
+        function goToModes() { showScreen('screen-modes'); }
+
+        // Старт режима
+        async function startMode(mode) {
+            wordIndex = 0;
+            currentMode = mode;
+            try {
+                const data = await apiRequest('/api/session/start', 'POST', { user_id: userId, topic_id: currentTopic.id, mode: mode });
+                currentSessionWords = data.words;
+                currentSessionId = data.session_id;
+                sessionStats = { correct: 0, incorrect: 0, total: data.total };
+
+                if (mode === 'flashcards') { loadFlashcard(); showScreen('screen-flashcards'); }
+                else if (mode === 'translation') { loadTranslation(); showScreen('screen-translation'); }
+                else if (mode === 'quiz') { loadQuiz(); showScreen('screen-quiz'); }
+                else if (mode === 'errors') { loadErrors(); showScreen('screen-errors'); }
+            } catch (e) {
+                alert('Ошибка старта: ' + e.message);
+            }
+        }
+
+        // Карточки
+        function loadFlashcard() {
+            if (wordIndex >= currentSessionWords.length) { showCompleteScreen(); return; }
+            const word = currentSessionWords[wordIndex];
+            updateProgress('fc', wordIndex + 1, currentSessionWords.length);
+            document.getElementById('fc-korean').innerText = word.korean;
+            document.getElementById('fc-example').innerText = word.example_korean;
+            document.getElementById('fc-translation').innerText = word.russian;
+            document.getElementById('fc-translation').classList.add('hidden');
+            document.getElementById('fc-buttons').classList.add('hidden');
+            document.getElementById('fc-show-answer').classList.remove('hidden');
+        }
+
+        function showAnswer() {
+            document.getElementById('fc-translation').classList.remove('hidden');
+            document.getElementById('fc-buttons').classList.remove('hidden');
+            document.getElementById('fc-show-answer').classList.add('hidden');
+        }
+
+        async function answerFlashcard(knew) {
+            await apiRequest('/api/flashcard/answer', 'POST', { user_id: userId, word_id: currentSessionWords[wordIndex].id, knew: knew });
+            if (knew) sessionStats.correct++; else sessionStats.incorrect++;
+            wordIndex++;
+            loadFlashcard();
+        }
+
+        // Перевод и Квиз (объединенная логика проверки)
+        function loadTranslation() {
+            if (wordIndex >= currentSessionWords.length) { showCompleteScreen(); return; }
+            updateProgress('tr', wordIndex + 1, currentSessionWords.length);
+            const word = currentSessionWords[wordIndex];
+            const dir = Math.random() > 0.5 ? 'ko_to_ru' : 'ru_to_ko';
+            currentDirection = dir;
+
+            if (dir === 'ko_to_ru') {
+                document.getElementById('tr-sentence').innerText = `Переведи слово в предложении:\n\n${word.example_korean.replace(word.korean, '___')}\n\nСлово: ${word.korean}`;
+            } else {
+                document.getElementById('tr-sentence').innerText = `Вставь корейское слово:\n\n${word.example_russian.replace(word.russian, '___')}\n\n(перевод: ${word.russian})`;
+            }
+            document.getElementById('tr-input').value = '';
+            document.getElementById('tr-feedback').className = 'feedback';
+            document.getElementById('tr-input').focus();
+        }
+
+        async function checkTranslation() {
+            await checkAnswerGeneric('tr', 'translation');
+        }
+
+        function loadQuiz() {
+            if (wordIndex >= currentSessionWords.length) { showCompleteScreen(); return; }
+            updateProgress('qz', wordIndex + 1, currentSessionWords.length);
+            const word = currentSessionWords[wordIndex];
+            currentDirection = Math.random() > 0.5 ? 'ko_to_ru' : 'ru_to_ko';
+
+            document.getElementById('qz-question').innerText = currentDirection === 'ko_to_ru'
+                ? `Как переводится:\n\n🇰🇷 ${word.korean}`
+                : `Как будет по-корейски:\n\n🇷🇺 ${word.russian}`;
+            document.getElementById('qz-input').value = '';
+            document.getElementById('qz-feedback').className = 'feedback';
+            document.getElementById('qz-input').focus();
+        }
+
+        async function checkQuiz() {
+            await checkAnswerGeneric('qz', 'quiz');
+        }
+
+        async function checkAnswerGeneric(prefix, mode) {
+            const input = document.getElementById(`${prefix}-input`);
+            const feedback = document.getElementById(`${prefix}-feedback`);
+            const answer = input.value.trim();
+
+            if (!answer) {
+                feedback.innerText = "⚠️ Введите ответ";
+                feedback.className = 'feedback active incorrect';
+                return;
+            }
+
+            try {
+                const word = currentSessionWords[wordIndex];
+                // Проверка выполняется СТРОГО на сервере через расстояние Левенштейна (без ИИ)
+                const res = await apiRequest('/api/answer/check', 'POST', {
+                    user_id: userId, word_id: word.id, answer: answer, mode: mode, direction: currentDirection
+                });
+
+                if (res.correct) {
+                    feedback.innerText = `✅ Правильно!`;
+                    feedback.className = 'feedback active correct';
+                    sessionStats.correct++;
+                } else {
+                    feedback.innerText = `❌ Неправильно. Верно: "${res.correct_answer}"`;
+                    feedback.className = 'feedback active incorrect';
+                    sessionStats.incorrect++;
+                }
+
+                setTimeout(() => {
+                    wordIndex++;
+                    if (mode === 'translation') loadTranslation(); else loadQuiz();
+                }, 1500);
+            } catch (e) {
+                alert('Ошибка проверки: ' + e.message);
+            }
+        }
+
+        // Ошибки
+        function loadErrors() {
+            const errors = currentSessionWords.filter(w => w.error_count > 0);
+            if (errors.length === 0) {
+                document.getElementById('er-info').innerText = 'У вас нет ошибок! 🎉';
+                document.getElementById('er-content').innerHTML = '<div class="empty-state"><div class="empty-state-icon">✨</div><div class="empty-state-text">Отличная работа!</div></div>';
+            } else {
+                document.getElementById('er-info').innerText = `Найдено слов с ошибками: ${errors.length}`;
+                let html = '';
+                errors.forEach(w => {
+                    html += `<div class="card"><div class="card-korean">${w.korean}</div><div class="card-example">Ошибок: ${w.error_count}</div></div>`;
+                });
+                document.getElementById('er-content').innerHTML = html;
+            }
+        }
+
+        // Завершение
+        function showCompleteScreen() {
+            showScreen('screen-complete');
+            const percent = sessionStats.total > 0 ? Math.round((sessionStats.correct / sessionStats.total) * 100) : 0;
+            document.getElementById('stats-correct').innerText = sessionStats.correct;
+            document.getElementById('stats-incorrect').innerText = sessionStats.incorrect;
+            document.getElementById('stats-total').innerText = sessionStats.total;
+            document.getElementById('stats-percent').innerText = percent;
+        }
+
+        // Enter для отправки
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('tr-input')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') checkTranslation(); });
+            document.getElementById('qz-input')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') checkQuiz(); });
+            loadTopics();
+        });
+    </script>
+</body>
+</html>
