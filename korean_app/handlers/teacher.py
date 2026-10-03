@@ -18,6 +18,7 @@ from chains.example_generator import generate_examples
 from chains.word_parser import parse_words
 from config import TEACHER_ID
 from database import async_session_factory
+from handlers.common import safe_answer
 from keyboards.teacher_kb import approval_kb
 from models import Assignment, Topic, User, Word
 
@@ -86,7 +87,7 @@ async def cmd_add_words(message: Message, state: FSMContext) -> None:
     if message.from_user is None or message.from_user.id != TEACHER_ID:
         return
     await state.set_state(AddWordsStates.waiting_student)
-    await message.answer("Кому назначаем? Введите ID ученика или 'all' (всем ученикам).")
+    await safe_answer(message, "Кому назначаем? Введите ID ученика или 'all' (всем ученикам).")
 
 
 @router.message(AddWordsStates.waiting_student, F.text)
@@ -101,25 +102,25 @@ async def step_student(message: Message, state: FSMContext) -> None:
             try:
                 sid = int(raw)
             except ValueError:
-                await message.answer("Введите число (ID) или 'all'.")
+                await safe_answer(message, "Введите число (ID) или 'all'.")
                 return
             student = next((s for s in students if s.id == sid), None)
             if student is None:
-                await message.answer("Ученик не найден. Сначала /add_student.")
+                await safe_answer(message, "Ученик не найден. Сначала /add_student.")
                 return
             student_ids = [sid]
             level = student.language_level or "A1"
 
     await state.update_data(student_ids=student_ids, level=level)
     await state.set_state(AddWordsStates.waiting_topic)
-    await message.answer("Введите название новой темы:")
+    await safe_answer(message, "Введите название новой темы:")
 
 
 @router.message(AddWordsStates.waiting_topic, F.text)
 async def step_topic(message: Message, state: FSMContext) -> None:
     topic_name = (message.text or "").strip()
     if not topic_name:
-        await message.answer("Название не может быть пустым.")
+        await safe_answer(message, "Название не может быть пустым.")
         return
     async with async_session_factory() as db:
         topic = Topic(name=topic_name, teacher_id=TEACHER_ID)
@@ -128,7 +129,7 @@ async def step_topic(message: Message, state: FSMContext) -> None:
         await db.refresh(topic)
     await state.update_data(topic_id=topic.id)
     await state.set_state(AddWordsStates.waiting_words)
-    await message.answer("Теперь пришлите список слов (текстом или .txt файлом).")
+    await safe_answer(message, "Теперь пришлите список слов (текстом или .txt файлом).")
 
 
 @router.message(AddWordsStates.waiting_words, F.text.as_(None) & F.document)
@@ -136,15 +137,10 @@ async def step_words_document(message: Message, state: FSMContext) -> None:
     await _process_words(message, state)
 
 
-@router.message(AddWordsStates.waiting_words, F.text)
-async def step_words_text(message: Message, state: FSMContext) -> None:
-    await _process_words(message, state)
-
-
 async def _process_words(message: Message, state: FSMContext) -> None:
     raw_text = await _read_words_file(message)
     if not raw_text or not raw_text.strip():
-        await message.answer("Не удалось прочитать список слов. Попробуйте ещё раз.")
+        await safe_answer(message, "Не удалось прочитать список слов. Попробуйте ещё раз.")
         return
 
     data = await state.get_data()
@@ -152,23 +148,23 @@ async def _process_words(message: Message, state: FSMContext) -> None:
     level = data["level"]
     student_ids = data["student_ids"]
 
-    await message.answer("🤖 Парсю список слов…")
+    await safe_answer(message, "🤖 Парсю список слов…")
     try:
         parsed = await parse_words(raw_text)
     except Exception as e:  # noqa: BLE001
         logger.exception("word_parser failed")
-        await message.answer(f"❌ Ошибка парсинга: {e}")
+        await safe_answer(message, f"❌ Ошибка парсинга: {e}")
         return
     if not parsed:
-        await message.answer("❌ Не удалось извлечь ни одной пары слов. Проверьте формат.")
+        await safe_answer(message, "❌ Не удалось извлечь ни одной пары слов. Проверьте формат.")
         return
 
-    await message.answer(f"✅ Распознано {len(parsed)} слов. Генерирую примеры (уровень {level})…")
+    await safe_answer(message, f"✅ Распознано {len(parsed)} слов. Генерирую примеры (уровень {level})…")
     try:
         enriched = await generate_examples(parsed, level)
     except Exception as e:  # noqa: BLE001
         logger.exception("example_generator failed")
-        await message.answer(f"❌ Ошибка генерации примеров: {e}")
+        await safe_answer(message, f"❌ Ошибка генерации примеров: {e}")
         return
 
     batch = PendingBatch(topic_id=topic_id, student_ids=student_ids, level=level, words=enriched)
@@ -178,7 +174,7 @@ async def _process_words(message: Message, state: FSMContext) -> None:
         await _save_unapproved_words(db, batch)
 
     await state.clear()
-    await message.answer(_format_preview(batch), reply_markup=approval_kb(topic_id))
+    await safe_answer(message, _format_preview(batch), reply_markup=approval_kb(topic_id))
 
 
 @router.callback_query(F.data.startswith("edit:"))
@@ -189,7 +185,7 @@ async def cb_edit(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await state.set_state(AddWordsStates.waiting_words)
     await state.update_data(edit_topic_id=topic_id)
-    await callback.message.answer("Опишите текстом, что исправить в примерах:")
+    await safe_answer(callback.message, "Опишите текстом, что исправить в примерах:")
     await callback.answer()
 
 
@@ -209,16 +205,16 @@ async def apply_edit(message: Message, state: FSMContext) -> None:
     topic_id = data.get("edit_topic_id")
     request_text = (message.text or "").strip()
     if not request_text or request_text.startswith("/"):
-        await message.answer("Опишите правки обычным текстом.")
+        await safe_answer(message, "Опишите правки обычным текстом.")
         return
 
     batch = pending_batches[topic_id]
-    await message.answer("✏️ Редактирую примеры…")
+    await safe_answer(message, "✏️ Редактирую примеры…")
     try:
         updated = await edit_examples(batch.words, request_text, batch.level)
     except Exception as e:  # noqa: BLE001
         logger.exception("example_editor failed")
-        await message.answer(f"❌ Ошибка редактирования: {e}")
+        await safe_answer(message, f"❌ Ошибка редактирования: {e}")
         return
 
     batch.words = updated
@@ -234,7 +230,7 @@ async def apply_edit(message: Message, state: FSMContext) -> None:
         await db.commit()
 
     await state.clear()
-    await message.answer(_format_preview(batch), reply_markup=approval_kb(topic_id))
+    await safe_answer(message, _format_preview(batch), reply_markup=approval_kb(topic_id))
 
 
 @router.callback_query(F.data.startswith("approve:"))
@@ -263,7 +259,7 @@ async def cb_approve(callback: CallbackQuery) -> None:
         await db.commit()
 
     n_words = len(rows)
-    await callback.message.answer(
+    await safe_answer(callback.message,
         f"✅ Тема одобрена! Слов: {n_words}. Назначено ученикам: {len(student_ids)}."
     )
     await callback.answer()
