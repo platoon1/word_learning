@@ -47,12 +47,14 @@ async def get_session_words(
     user_id: int,
     topic_id: int,
     mode: str,
-    limit: int = 10,
+    limit: Optional[int] = None,
 ) -> list[dict]:
     """Формирует список слов сессии.
 
     - mode == 'errors': слова из пула ошибок пользователя (по topic), сортировка по error_count DESC.
     - иначе: случайные approved=True слова темы.
+
+    limit=None (по умолчанию) — берётся ВЕСЬ набор слов темы/ошибок (наборы небольшие).
     """
     if mode == "errors":
         stmt = (
@@ -60,15 +62,16 @@ async def get_session_words(
             .join(ErrorWord, ErrorWord.word_id == Word.id)
             .where(ErrorWord.student_id == user_id, Word.topic_id == topic_id)
             .order_by(ErrorWord.error_count.desc())
-            .limit(limit)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
         rows = (await db.execute(stmt)).all()
         return [_word_to_dict(w, ec) for w, ec in rows]
 
     stmt = select(Word).where(Word.topic_id == topic_id, Word.approved.is_(True))
     words = list((await db.execute(stmt)).scalars().all())
     random.shuffle(words)
-    return [_word_to_dict(w) for w in words[:limit]]
+    return [_word_to_dict(w) for w in (words[:limit] if limit is not None else words)]
 
 
 async def add_to_error(db: AsyncSession, user_id: int, word_id: int) -> None:

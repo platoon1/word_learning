@@ -282,6 +282,21 @@
         <div id="screen-errors" class="screen">
             <div class="error-info" id="er-info" style="text-align:center; font-size:18px; margin-bottom: 20px; font-weight: bold; color: var(--color-dark-green);"></div>
             <div id="er-content"></div>
+            <div id="er-card-view" class="hidden">
+                <div class="progress-text" id="er-progress">Карточка 1 из 1</div>
+                <div class="progress-bar"><div class="progress-bar-fill" id="er-progress-bar" style="width: 100%"></div></div>
+                <div class="card">
+                    <div class="card-korean" id="er-korean"></div>
+                    <div class="card-example" id="er-example"></div>
+                    <div class="card-example" id="er-errorcount" style="color: var(--app-hint); font-size: 14px;"></div>
+                    <div class="card-translation hidden" id="er-translation"></div>
+                </div>
+                <button id="er-show-answer" onclick="showErrorAnswer()"><span class="emoji">👁️</span> Показать перевод</button>
+                <div class="fc-buttons">
+                    <button class="btn-back" style="margin-top: 0;" onclick="prevErrorCard()"><span class="emoji">⬅️</span> Назад</button>
+                    <button class="btn-back" style="margin-top: 0;" onclick="nextErrorCard()">Вперёд <span class="emoji">➡️</span></button>
+                </div>
+            </div>
             <button class="btn-back" onclick="goToModes()"><span class="emoji">🔙</span> Назад</button>
         </div>
 
@@ -316,13 +331,32 @@
         let currentSessionWords = [];
         let currentSessionId = null;
 
-        // API Helper
-        async function apiRequest(endpoint, method = 'GET', body = null) {
+        // API Helper (с повтором: сетевые сбои/обрывы соединения в WebView Telegram
+        // дают "Load failed" — одна автоматическая ретрай обычно это лечит)
+        async function apiRequest(endpoint, method = 'GET', body = null, retries = 1) {
             const options = { method, headers: { 'Content-Type': 'application/json' } };
             if (body) options.body = JSON.stringify(body);
-            const res = await fetch(`${API_BASE}${endpoint}`, options);
-            if (!res.ok) throw new Error((await res.json()).detail || 'API Error');
-            return await res.json();
+            let lastError;
+            for (let attempt = 0; attempt <= retries; attempt++) {
+                try {
+                    const res = await fetch(`${API_BASE}${endpoint}`, options);
+                    if (!res.ok) {
+                        let detail = 'API Error';
+                        try { detail = (await res.json()).detail || detail; } catch (_) {}
+                        throw new Error(detail);
+                    }
+                    return await res.json();
+                } catch (e) {
+                    lastError = e;
+                    // Ошибки HTTP (4xx/5xx с detail) не повторяем — только сетевые сбои
+                    if (attempt < retries && /load failed|network|fetch/i.test(String(e.message))) {
+                        await new Promise(r => setTimeout(r, 600));
+                        continue;
+                    }
+                    break;
+                }
+            }
+            throw lastError;
         }
 
         // Навигация
@@ -486,6 +520,10 @@
                     feedback.innerText = `❌ Неправильно. Верно: "${res.correct_answer}"`;
                     feedback.className = 'feedback active incorrect';
                     sessionStats.incorrect++;
+                    // Слово попало в пул ошибок — обновляем счётчик на сервере
+                    try {
+                        await apiRequest('/api/flashcard/answer', 'POST', { user_id: userId, word_id: word.id, knew: false });
+                    } catch (_) { /* не критично для показа фидбека */ }
                 }
 
                 setTimeout(() => {
@@ -493,24 +531,62 @@
                     if (mode === 'translation') loadTranslation(); else loadQuiz();
                 }, 1500);
             } catch (e) {
-                alert('Ошибка проверки: ' + e.message);
+                alert('Ошибка перевода: ' + e.message);
+                // Не блокируем тренировку при сетевом сбое — переходим к следующему слову
+                setTimeout(() => {
+                    wordIndex++;
+                    if (mode === 'translation') loadTranslation(); else loadQuiz();
+                }, 800);
             }
         }
 
-        // Ошибки
+        // Ошибки: просмотр карточек с переводом и листанием
+        let errorCards = [];
+        let errorIndex = 0;
+
         function loadErrors() {
-            const errors = currentSessionWords.filter(w => w.error_count > 0);
-            if (errors.length === 0) {
+            errorCards = currentSessionWords.filter(w => w.error_count > 0);
+            const contentEl = document.getElementById('er-content');
+            const viewEl = document.getElementById('er-card-view');
+            if (errorCards.length === 0) {
                 document.getElementById('er-info').innerText = 'У вас нет ошибок! 🎉';
-                document.getElementById('er-content').innerHTML = '<div class="empty-state"><div class="empty-state-icon">✨</div><div class="empty-state-text">Отличная работа!</div></div>';
+                contentEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✨</div><div class="empty-state-text">Отличная работа!</div></div>';
+                viewEl.classList.add('hidden');
             } else {
-                document.getElementById('er-info').innerText = `Найдено слов с ошибками: ${errors.length}`;
-                let html = '';
-                errors.forEach(w => {
-                    html += `<div class="card"><div class="card-korean">${w.korean}</div><div class="card-example">Ошибок: ${w.error_count}</div></div>`;
-                });
-                document.getElementById('er-content').innerHTML = html;
+                document.getElementById('er-info').innerText = `Слов для повторения: ${errorCards.length}`;
+                contentEl.innerHTML = '';
+                viewEl.classList.remove('hidden');
+                errorIndex = 0;
+                showErrorCard();
             }
+        }
+
+        function showErrorCard() {
+            if (errorCards.length === 0) return;
+            if (errorIndex < 0) errorIndex = 0;
+            if (errorIndex >= errorCards.length) errorIndex = errorCards.length - 1;
+            const word = errorCards[errorIndex];
+            updateProgress('er', errorIndex + 1, errorCards.length);
+            document.getElementById('er-progress').textContent = `Карточка ${errorIndex + 1} из ${errorCards.length}`;
+            document.getElementById('er-korean').innerText = word.korean;
+            document.getElementById('er-example').innerText = word.example_korean || '';
+            document.getElementById('er-errorcount').innerText = `Ошибок: ${word.error_count}`;
+            document.getElementById('er-translation').innerText = word.russian;
+            document.getElementById('er-translation').classList.add('hidden');
+            document.getElementById('er-show-answer').classList.remove('hidden');
+        }
+
+        function showErrorAnswer() {
+            document.getElementById('er-translation').classList.remove('hidden');
+            document.getElementById('er-show-answer').classList.add('hidden');
+        }
+
+        function prevErrorCard() {
+            if (errorIndex > 0) { errorIndex--; showErrorCard(); }
+        }
+
+        function nextErrorCard() {
+            if (errorIndex < errorCards.length - 1) { errorIndex++; showErrorCard(); }
         }
 
         // Завершение
