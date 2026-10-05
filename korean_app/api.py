@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,7 +36,7 @@ class SessionStart(BaseModel):
     user_id: int
     topic_id: int
     mode: str  # flashcards | translation | quiz | errors
-    limit: int = 10
+    limit: Optional[int] = None  # None = весь набор слов темы
 
 
 class AnswerCheck(BaseModel):
@@ -58,12 +59,12 @@ def _check_access(user_id: int) -> None:
 
 
 @app.get("/")
-async def index() -> str:
-    """Отдаёт frontend Mini App."""
+async def index() -> FileResponse:
+    """Отдаёт frontend Mini App как HTML (content-type text/html)."""
     html_file = STATIC_DIR / "index.html"
     if not html_file.exists():
         raise HTTPException(status_code=404, detail="index.html не найден")
-    return (html_file).read_text(encoding="utf-8")
+    return FileResponse(html_file, media_type="text/html; charset=utf-8")
 
 
 @app.get("/api/topics/{user_id}")

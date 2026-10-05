@@ -25,20 +25,73 @@ def levenshtein_distance(s1: str, s2: str) -> int:
     return previous_row[-1]
 
 
+PUNCT_TABLE = str.maketrans(
+    {
+        "«": "", "»": "", '"': "", "'": "", "’": "", "`": "",
+        ",": " ", ";": " ", ":": " ", "!": " ", "?": " ", ".": " ",
+        "(": " ", ")": " ", "-": " ", "–": " ", "—": " ",
+    }
+)
+
+
 def normalize(text: str) -> str:
     """Нормализация: trim + нижний регистр."""
     return text.strip().lower()
 
 
-def check_with_levenshtein(student_answer: str, correct_answer: str, max_distance: int = 1) -> bool:
-    """Проверка ответа с допуском max_distance изменений символа (по умолчанию 1 опечатка).
+def _normalize_words(text: str) -> list[str]:
+    """Плотная нормализация для сравнения по словам.
 
-    НЕ использует ИИ — строго программная проверка.
+    Нижний регистр, удаление пунктуации (в т.ч. дефиса), сжатие пробелов.
+    """
+    cleaned = text.lower().translate(PUNCT_TABLE)
+    return [w for w in cleaned.split() if w]
+
+
+def _first_word_ok(answer_words: list[str], correct_words: list[str]) -> bool:
+    """Эвристика «первого слова»: ответ засчитывается, если первое слово ответа
+    точно совпадает с первым словом правильного перевода и длиннее 2 букв
+    (порог отсекает предлоги/союзы: «в», «на», «и», «не» и т.п.).
+
+    Используется только когда расстояние Левенштейна по всей строке слишком велико
+    (например, правильный ответ «хочется чего-то, тянуть на что-то», а ученик
+    написал «хочется что-то»).
+    """
+    if not answer_words or not correct_words:
+        return False
+    first = answer_words[0]
+    return len(first) > 2 and first == correct_words[0]
+
+
+def check_with_levenshtein(
+    student_answer: str,
+    correct_answer: str,
+    max_distance: int = 1,
+    allow_first_word: bool = True,
+) -> bool:
+    """Проверка ответа БЕЗ ИИ — строго программная.
+
+    Порядок:
+    1. Точное совпадение (после нормализации) -> True.
+    2. Расстояние Левенштейна <= max_distance (допуск 1 опечатки) -> True.
+    3. Если allow_first_word и первое слово ответа (>2 букв, чтобы не засчитывать
+       предлоги) точно совпадает с первым словом правильного перевода -> True.
+       Это позволяет shorter-варианты длинных переводов («хочется что-то» при
+       эталоне «хочется чего-то, тянуть на что-то») считать верными.
     """
     a = normalize(student_answer)
     b = normalize(correct_answer)
 
+    if not a:
+        return False
+
     if a == b:
         return True
 
-    return levenshtein_distance(a, b) <= max_distance
+    if levenshtein_distance(a, b) <= max_distance:
+        return True
+
+    if allow_first_word:
+        return _first_word_ok(_normalize_words(a), _normalize_words(b))
+
+    return False
